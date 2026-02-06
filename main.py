@@ -18,8 +18,8 @@ def detectar_curso(df):
 def detectar_periodo(matricula):
     try:
         codigo = str(matricula).split(".")[0][:3]  # pega os 3 primeiros dígitos
-        ano = 2000 + int(codigo[1:])  # últimos 2 dígitos = ano
-        periodo = codigo[0]           # primeiro dígito = período (1 ou 2)
+        ano = 2000 + int(codigo[1:])               # últimos 2 dígitos = ano
+        periodo = codigo[0]                        # primeiro dígito = período (1 ou 2)
         return f"{ano}.{periodo}"
     except:
         return "Desconhecido"
@@ -82,7 +82,11 @@ if uploaded_files:
     resultados_por_curso = {}
 
     for uploaded_file in uploaded_files:
-        df = pd.read_excel(uploaded_file)
+        # Força cabeçalho na linha correta (ajuste se necessário)
+        df = pd.read_excel(uploaded_file, header=5)
+        df.columns = df.columns.str.strip().str.lower()
+        st.write("Colunas detectadas:", df.columns.tolist())  # debug para confirmar
+
         resultados = processar_relatorio(df)
 
         for r in resultados:
