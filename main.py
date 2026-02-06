@@ -4,23 +4,29 @@ from io import BytesIO
 
 # Função para processar relatório por curso e modalidade
 def processar_por_curso_modalidade(df, curso, periodo):
-    df["Curso"] = curso  # força a coluna Curso
-    df_curso = df[df["Curso"] == curso]
+    df["curso"] = curso  # força a coluna curso
 
-    modalidades = df_curso["Modalidade de Ingresso"].unique()
+    # Normaliza colunas
+    df.columns = df.columns.str.strip().str.lower()
+
     resultados = []
 
-    for modalidade in modalidades:
-        df_mod = df_curso[df_curso["Modalidade de Ingresso"] == modalidade]
+    # Determina modalidade pela primeira letra
+    df["modalidade"] = df["modalidade de ingresso"].str[0].map(
+        lambda x: "AC" if str(x).upper().startswith("A") else "AA"
+    )
+
+    for modalidade in df["modalidade"].unique():
+        df_mod = df[df["modalidade"] == modalidade]
 
         metrics = {
             "Período": periodo,
             "Curso": curso,
             "Modalidade": modalidade,
             "Ingressantes": len(df_mod),
-            "Cancelamentos": df_mod["Situação"].str.contains("Cancelamento", case=False, na=False).sum(),
-            "Matrículas Ativas": df_mod["Situação"].str.contains("Pendente|Ativo", case=False, na=False).sum(),
-            "Formados": df_mod["Situação"].str.contains("Formado", case=False, na=False).sum(),
+            "Cancelamentos": df_mod["situação"].str.contains("cancelamento", case=False, na=False).sum(),
+            "Matrículas Ativas": df_mod["situação"].str.contains("pendente|ativo", case=False, na=False).sum(),
+            "Formados": df_mod["situação"].str.contains("formado", case=False, na=False).sum(),
             "% Evasão": 0.0
         }
 
