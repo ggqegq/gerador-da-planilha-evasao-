@@ -81,13 +81,18 @@ uploaded_files = st.file_uploader(
 if uploaded_files:
     resultados_por_curso = {}
 
-    for uploaded_file in uploaded_files:
-        # Força cabeçalho na linha correta (ajuste se necessário)
-        df = pd.read_excel(uploaded_file, header=5)
-        df.columns = df.columns.str.strip().str.lower()
-        st.write("Colunas detectadas:", df.columns.tolist())  # debug para confirmar
+   for uploaded_file in uploaded_files:
+    # Primeiro lê sem cabeçalho para inspecionar
+    temp = pd.read_excel(uploaded_file, header=None)
+    st.write("Primeiras linhas do arquivo:", temp.head(10))
 
-        resultados = processar_relatorio(df)
+    # Agora lê usando a linha correta como cabeçalho (ajuste o número!)
+    df = pd.read_excel(uploaded_file, header=5)
+    df.columns = df.columns.str.strip().str.lower()
+    st.write("Colunas detectadas:", df.columns.tolist())
+
+    resultados = processar_relatorio(df)
+
 
         for r in resultados:
             curso = r["Curso"]
