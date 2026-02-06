@@ -2,72 +2,94 @@ import streamlit as st
 import pandas as pd
 from io import BytesIO
 
-# Função para processar relatório por curso e modalidade
-def processar_por_curso_modalidade(df, curso, periodo):
-    df["curso"] = curso  # força a coluna curso
+# Função para detectar curso pela última linha
+def detectar_curso(df):
+    ultima_linha = " ".join(df.iloc[-1].astype(str).tolist()).lower()
+    if "químico industrial" in ultima_linha:
+        return "Bacharel Q Industrial"
+    elif "licenciado" in ultima_linha:
+        return "Licenciatura Química"
+    elif "bacharel" in ultima_linha:
+        return "Bacharel Química"
+    else:
+        return "Curso Desconhecido"
 
+# Função para converter código da matrícula em período letivo
+def detectar_periodo(matricula):
+    try:
+        codigo = str(matricula).split(".")[0][:3]  # pega os 3 primeiros dígitos
+        ano = 2000 + int(codigo[1:])  # últimos 2 dígitos = ano
+        periodo = codigo[0]           # primeiro dígito = período (1 ou 2)
+        return f"{ano}.{periodo}"
+    except:
+        return "Desconhecido"
+
+# Função principal de processamento
+def processar_relatorio(df):
     # Normaliza colunas
     df.columns = df.columns.str.strip().str.lower()
 
-    resultados = []
+    # Detecta curso pela última linha
+    curso = detectar_curso(df)
 
-    # Determina modalidade pela primeira letra
-    df["modalidade"] = df["modalidade de ingresso"].str[0].map(
-        lambda x: "AC" if str(x).upper().startswith("A") else "AA"
+    # Remove a última linha (resumo)
+    df = df.iloc[:-1, :]
+
+    # Cria coluna curso
+    df["curso"] = curso
+
+    # Cria coluna período a partir da matrícula
+    df["período"] = df["matrícula"].apply(detectar_periodo)
+
+    # Cria coluna modalidade simplificada
+    df["modalidade"] = df["modalidade de ingresso"].astype(str).str[0].map(
+        lambda x: "AC" if x.upper().startswith("A") else "AA"
     )
 
-    for modalidade in df["modalidade"].unique():
-        df_mod = df[df["modalidade"] == modalidade]
+    resultados = []
+    for periodo in df["período"].unique():
+        for modalidade in df["modalidade"].unique():
+            df_mod = df[(df["período"] == periodo) & (df["modalidade"] == modalidade)]
 
-        metrics = {
-            "Período": periodo,
-            "Curso": curso,
-            "Modalidade": modalidade,
-            "Ingressantes": len(df_mod),
-            "Cancelamentos": df_mod["situação"].str.contains("cancelamento", case=False, na=False).sum(),
-            "Matrículas Ativas": df_mod["situação"].str.contains("pendente|ativo", case=False, na=False).sum(),
-            "Formados": df_mod["situação"].str.contains("formado", case=False, na=False).sum(),
-            "% Evasão": 0.0
-        }
+            metrics = {
+                "Período": periodo,
+                "Curso": curso,
+                "Modalidade": modalidade,
+                "Ingressantes": len(df_mod),
+                "Cancelamentos": df_mod["situação"].str.contains("cancelamento", case=False, na=False).sum(),
+                "Matrículas Ativas": df_mod["situação"].str.contains("pendente|ativo", case=False, na=False).sum(),
+                "Formados": df_mod["situação"].str.contains("formado", case=False, na=False).sum(),
+                "% Evasão": 0.0
+            }
 
-        if metrics["Ingressantes"] > 0:
-            metrics["% Evasão"] = round((metrics["Cancelamentos"] / metrics["Ingressantes"]) * 100, 2)
+            if metrics["Ingressantes"] > 0:
+                metrics["% Evasão"] = round((metrics["Cancelamentos"] / metrics["Ingressantes"]) * 100, 2)
 
-        resultados.append(metrics)
+            resultados.append(metrics)
 
     return resultados
 
 # Interface Streamlit
 st.title("Gerador de Planilha Acumulada de Evasão - Química")
 
-st.write("Carregue os relatórios separados por curso:")
+uploaded_files = st.file_uploader(
+    "Carregue múltiplos relatórios de listagem de alunos (.xlsx)", 
+    type=["xlsx"], 
+    accept_multiple_files=True
+)
 
-files_lic = st.file_uploader("Arquivos da Licenciatura Química", type=["xlsx"], accept_multiple_files=True)
-files_bach = st.file_uploader("Arquivos do Bacharel Química", type=["xlsx"], accept_multiple_files=True)
-files_ind = st.file_uploader("Arquivos do Bacharel Química Industrial", type=["xlsx"], accept_multiple_files=True)
+if uploaded_files:
+    resultados_por_curso = {}
 
-if st.button("Gerar Planilha Consolidada"):
-    resultados_por_curso = {
-        "Licenciatura Química": [],
-        "Bacharel Química": [],
-        "Bacharel Q Industrial": []
-    }
-
-    # Processa cada conjunto de arquivos
-    for uploaded_file in files_lic:
+    for uploaded_file in uploaded_files:
         df = pd.read_excel(uploaded_file)
-        periodo = uploaded_file.name.split("_")[-1].replace(".xlsx", "")
-        resultados_por_curso["Licenciatura Química"].extend(processar_por_curso_modalidade(df, "Licenciatura Química", periodo))
+        resultados = processar_relatorio(df)
 
-    for uploaded_file in files_bach:
-        df = pd.read_excel(uploaded_file)
-        periodo = uploaded_file.name.split("_")[-1].replace(".xlsx", "")
-        resultados_por_curso["Bacharel Química"].extend(processar_por_curso_modalidade(df, "Bacharel Química", periodo))
-
-    for uploaded_file in files_ind:
-        df = pd.read_excel(uploaded_file)
-        periodo = uploaded_file.name.split("_")[-1].replace(".xlsx", "")
-        resultados_por_curso["Bacharel Q Industrial"].extend(processar_por_curso_modalidade(df, "Bacharel Q Industrial", periodo))
+        for r in resultados:
+            curso = r["Curso"]
+            if curso not in resultados_por_curso:
+                resultados_por_curso[curso] = []
+            resultados_por_curso[curso].append(r)
 
     # Cria Excel com abas por curso
     output = BytesIO()
@@ -76,6 +98,11 @@ if st.button("Gerar Planilha Consolidada"):
             if dados:
                 df_resultado = pd.DataFrame(dados)
                 df_resultado.to_excel(writer, sheet_name=curso, index=False)
+
+        # Aba resumo geral
+        todos = [r for lista in resultados_por_curso.values() for r in lista]
+        df_geral = pd.DataFrame(todos)
+        df_geral.to_excel(writer, sheet_name="Resumo Geral", index=False)
 
     st.success("Planilha acumulada gerada com sucesso!")
 
